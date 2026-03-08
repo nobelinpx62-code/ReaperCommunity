@@ -3,14 +3,11 @@ import LoginGate from "@/components/LoginGate"
 import TermsGate from "@/components/TermsGate"
 import TokenGate from "@/components/TokenGate"
 import Link from "next/link"
-import { prisma } from "@/lib/prisma"
 import { Hash, Plus, Trash2, ShieldCheck } from "lucide-react"
-import { createCategory, createChannel, deleteCategory, deleteChannel } from "@/app/actions/adminActions"
 import RealtimeSync from "@/components/RealtimeSync"
 import TicketPanel from "@/components/TicketPanel"
 import AdminPanel from "@/components/AdminPanel"
 import { supabase } from "@/lib/supabase"
-
 
 const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
 
@@ -22,6 +19,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
   const user = session.user as any;
   const searchParams = await props.searchParams;
   const isMemberView = searchParams?.view === "member";
+  
   const isRealAdmin = ADMIN_IDS.includes(user?.discordId);
   const isAdmin = isRealAdmin && !isMemberView;
 
@@ -30,42 +28,37 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
 
   const { data: dbUser } = await supabase
     .from('User')
-    .select('role')
+    .select('*')
     .eq('id', user.id)
     .single();
 
   const isStaff = isRealAdmin || dbUser?.role === "STAFF" || dbUser?.role === "ADMIN";
-
   const activeStaffMode = isStaff && !isMemberView;
 
-  const tickets = await prisma.ticket.findMany({
-      where: activeStaffMode ? {} : { userId: user.id },
-      include: {
-          user: true,
-          messages: { include: { user: true }, orderBy: { createdAt: 'asc' } }
-      },
-      orderBy: [ { status: 'desc' }, { createdAt: 'desc' } ]
-  });
+  const ticketsQuery = supabase
+    .from('Ticket')
+    .select('*, user:User(*), messages:Message(*, user:User(*))')
+    .order('status', { ascending: false })
+    .order('createdAt', { ascending: false });
 
-  const allUsers = isAdmin ? await prisma.user.findMany({ include: { accounts: true }, orderBy: { createdAt: 'desc' } }) : [];
+  if (!activeStaffMode) {
+    ticketsQuery.eq('userId', user.id);
+  }
 
-  let categories = await prisma.category.findMany({
-    include: { channels: true },
-    orderBy: { createdAt: 'asc' }
-  });
+  const { data: tickets = [] } = await ticketsQuery;
 
-  // Seed default category if none exist
-  if (categories.length === 0 && isAdmin) {
-    await prisma.category.create({
-      data: {
-        name: "Sistemas RBX",
-        icon: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Roblox_Logo_2022.svg/100px-Roblox_Logo_2022.svg.png",
-        channels: {
-          create: [{ name: "anúncios-rbx" }, { name: "downloads" }]
-        }
-      }
-    });
-    categories = await prisma.category.findMany({ include: { channels: true }, orderBy: { createdAt: 'asc' } });
+  const { data: categories = [] } = await supabase
+    .from('Category')
+    .select('*, channels:Channel(*)')
+    .order('createdAt', { ascending: true });
+
+  let allUsers = [];
+  if (isAdmin) {
+    const { data: usersData } = await supabase
+      .from('User')
+      .select('*, accounts:Account(*)')
+      .order('createdAt', { ascending: false });
+    allUsers = usersData || [];
   }
 
   return (
@@ -94,14 +87,17 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
          </div>
 
          {isAdmin && <AdminPanel users={allUsers} isRealAdmin={isAdmin} />}
-         <TicketPanel user={{...user, role: dbUser?.role || "USER"}} tickets={tickets} isStaff={activeStaffMode} />
+         <TicketPanel user={{...user, role: dbUser?.role || "USER"}} tickets={tickets as any} isStaff={activeStaffMode} />
 
          {isAdmin && (
           <form action={async (formData) => {
             "use server";
             const name = formData.get("name") as string;
             const icon = formData.get("icon") as string;
-            if(name) await createCategory(name, icon);
+            if(name) {
+                const { supabase: s } = await import("@/lib/supabase");
+                await s.from('Category').insert({ name, icon });
+            }
           }} className="glass-panel" style={{ padding: '16px', marginBottom: '24px', display: 'flex', gap: '8px', alignItems: 'center' }}>
             <input type="text" name="name" placeholder="Nova Categoria..." className="input-field" required style={{ flex: 1 }} />
             <input type="text" name="icon" placeholder="URL Ícone (Opcional)" className="input-field" style={{ flex: 1 }} />
@@ -110,7 +106,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {categories.map(cat => (
+          {(categories || []).map((cat: any) => (
             <div key={cat.id} className="glass-panel" style={{ padding: '24px' }}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '12px' }}>
                  <h3 className="brand-font text-gradient-red" style={{ fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -118,14 +114,18 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                    {cat.name.toUpperCase()}
                  </h3>
                  {isAdmin && (
-                    <form action={async () => { "use server"; await deleteCategory(cat.id); }}>
+                    <form action={async () => { 
+                        "use server"; 
+                        const { supabase: s } = await import("@/lib/supabase");
+                        await s.from('Category').delete().eq('id', cat.id); 
+                    }}>
                        <button type="submit" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={18}/></button>
                     </form>
                  )}
                </div>
 
                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginLeft: '12px' }}>
-                 {cat.channels.map(ch => (
+                 {(cat.channels || []).map((ch: any) => (
                     <div key={ch.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <Link href={`/channel/${ch.id}${isMemberView ? '?view=member' : ''}`} style={{ textDecoration: 'none', flex: 1 }}>
                         <div className="channel-card">
@@ -134,7 +134,11 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                         </div>
                       </Link>
                       {isAdmin && (
-                         <form action={async () => { "use server"; await deleteChannel(ch.id); }} style={{ marginLeft: '12px' }}>
+                         <form action={async () => { 
+                             "use server"; 
+                             const { supabase: s } = await import("@/lib/supabase");
+                             await s.from('Channel').delete().eq('id', ch.id); 
+                         }} style={{ marginLeft: '12px' }}>
                             <button type="submit" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '8px' }}><Trash2 size={16}/></button>
                          </form>
                       )}
@@ -145,7 +149,10 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                     <form action={async (formData) => {
                       "use server";
                       const name = formData.get("name") as string;
-                      if(name) await createChannel(cat.id, name);
+                      if(name) {
+                          const { supabase: s } = await import("@/lib/supabase");
+                          await s.from('Channel').insert({ categoryId: cat.id, name });
+                      }
                     }} style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                       <input type="text" name="name" placeholder="novo-canal" className="input-field" required style={{ flex: 1, padding: '10px' }} />
                       <button type="submit" className="btn-secondary" style={{ padding: '0 16px' }}><Plus size={16}/></button>
@@ -154,10 +161,10 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                </div>
             </div>
           ))}
-          {categories.length === 0 && <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhuma categoria disponível.</p>}
+          {(!categories || categories.length === 0) && <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhuma categoria disponível.</p>}
         </div>
 
-        {!isAdmin && <RealtimeSync />}
+        {!isRealAdmin && <RealtimeSync />}
       </div>
     </main>
   );
