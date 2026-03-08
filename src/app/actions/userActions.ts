@@ -1,27 +1,31 @@
-"use server"
-
 import { auth } from "@/auth"
-import { prisma } from "@/lib/prisma"
+import { supabase } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
 
 export async function saveTermsAgreement() {
   const session = await auth()
-  
+
   if (!session?.user?.id) {
     throw new Error("Unauthorized")
   }
 
-  await prisma.user.update({
-    where: { id: session.user.id },
-    data: { agreedTerms: true }
-  })
+  // Update the user record in Supabase
+  const { error } = await supabase
+    .from('User')
+    .update({ agreedTerms: true })
+    .eq('id', session.user.id)
 
-  revalidatePath("/")
+  if (error) {
+    console.error('Supabase update error (terms):', error)
+    throw new Error('Failed to save terms agreement')
+  }
+
+  revalidatePath('/')
 }
 
 export async function saveVerifiedToken(token: string) {
   const session = await auth()
-  
+
   if (!session?.user?.id) {
     throw new Error("Unauthorized")
   }
@@ -30,10 +34,16 @@ export async function saveVerifiedToken(token: string) {
     throw new Error("Token inválido!")
   }
 
-  await prisma.user.update({
-    where: { id: session.user.id },
-    data: { verifiedToken: token }
-  })
+  const { error } = await supabase
+    .from('User')
+    .update({ verifiedToken: token })
+    .eq('id', session.user.id)
 
-  revalidatePath("/")
+  if (error) {
+    console.error('Supabase update error (token):', error)
+    throw new Error('Failed to save verified token')
+  }
+
+  revalidatePath('/')
 }
+

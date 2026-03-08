@@ -1,19 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { saveTermsAgreement } from "@/app/actions/userActions";
 import { motion } from "framer-motion";
 
 export default function TermsGate() {
+  const { data: session, status } = useSession();
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [agreedData, setAgreedData] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status === "authenticated" && (session?.user as any)?.agreedTerms) {
+      router.replace("/");
+    }
+  }, [session, status, router]);
 
   const canProceed = agreedTerms && agreedData;
 
   const handleAgree = async () => {
     setSaving(true);
-    await saveTermsAgreement();
+    try {
+      await saveTermsAgreement();
+      // Hard refresh to ensure session cookie is updated
+      window.location.href = "/";
+    } catch (err) {
+      console.error('Error saving terms agreement:', err);
+      setSaving(false);
+    }
   };
 
   return (

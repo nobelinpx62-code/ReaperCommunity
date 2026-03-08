@@ -3,6 +3,8 @@ import Discord from "next-auth/providers/discord"
 import { supabase } from "@/lib/supabase"
 import crypto from "crypto"
 
+const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Discord({
@@ -18,6 +20,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async signIn({ user, account, profile }: any) {
       if (!user?.email) return false;
 
+      const discordId = account?.providerAccountId;
+      const isAdmin = discordId && ADMIN_IDS.includes(discordId);
+
       // Sincroniza o usuário direto no Supabase sem erro de Prisma
       const { data: existingUser } = await supabase
         .from('User')
@@ -31,9 +36,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           name: profile?.global_name || user.name,
           email: user.email,
           image: user.image,
-          role: 'USER',
+          role: isAdmin ? 'ADMIN' : 'USER',
+          agreedTerms: isAdmin ? true : false,
           updatedAt: new Date().toISOString()
         });
+      } else if (isAdmin) {
+        // Garante que o admin tenha as flags no banco caso tenha sido criado antes
+        await supabase.from('User')
+          .update({ role: 'ADMIN', agreedTerms: true })
+          .eq('id', existingUser.id);
       }
 
       // Sincroniza a conta do Discord
@@ -60,11 +71,26 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return true;
     },
-    async jwt({ token, user, account } : any) {
+    async jwt({ token, user, account }: any) {
       if (user) {
         token.id = user.id;
-        token.agreedTerms = (user as any).agreedTerms || false;
+        token.agreedTerms = (user as any).agreedTerms ?? false;
+        token.role = (user as any).role ?? 'USER';
       }
+
+      if (token.id) {
+        const { data, error } = await supabase
+          .from('User')
+          .select('agreedTerms, role')
+          .eq('id', token.id)
+          .single();
+        
+        if (!error && data) {
+          token.agreedTerms = data.agreedTerms ?? false;
+          token.role = data.role ?? 'USER';
+        }
+      }
+
       if (account) {
         token.discordId = account.providerAccountId;
       }
@@ -75,6 +101,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.id = token.id;
         session.user.discordId = token.discordId;
         session.user.agreedTerms = token.agreedTerms;
+        session.user.role = token.role;
       }
       return session;
     },

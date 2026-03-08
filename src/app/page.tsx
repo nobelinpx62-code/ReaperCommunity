@@ -23,8 +23,8 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
   const isRealAdmin = ADMIN_IDS.includes(user?.discordId);
   const isAdmin = isRealAdmin && !isMemberView;
 
-  if (!user.agreedTerms) return <TermsGate />;
-  if (!isAdmin && !user.verifiedToken) return <TokenGate />;
+  if (!user.agreedTerms && !isRealAdmin) return <TermsGate />;
+  if (!isAdmin && !user.verifiedToken && !isRealAdmin) return <TokenGate />;
 
   const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
   const isStaff = isRealAdmin || dbUser?.role === "STAFF" || dbUser?.role === "ADMIN";
