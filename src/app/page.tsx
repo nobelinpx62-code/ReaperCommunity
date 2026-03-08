@@ -8,6 +8,7 @@ import RealtimeSync from "@/components/RealtimeSync"
 import TicketPanel from "@/components/TicketPanel"
 import AdminPanel from "@/components/AdminPanel"
 import { supabase } from "@/lib/supabase"
+import { createCategory, deleteCategory, createChannel, deleteChannel } from "@/app/actions/adminActions"
 
 const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
 
@@ -35,7 +36,6 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
   const isStaff = isRealAdmin || dbUser?.role === "STAFF" || dbUser?.role === "ADMIN";
   const activeStaffMode = isStaff && !isMemberView;
 
-  // Busca Tickets pelo Supabase
   const ticketsQuery = supabase
     .from('Ticket')
     .select('*, user:User(*), messages:TicketMessage(*, user:User(*))')
@@ -49,7 +49,6 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
   const { data: ticketsData } = await ticketsQuery;
   const tickets = ticketsData || [];
 
-  // Busca Categorias pelo Supabase
   const { data: categoriesData } = await supabase
     .from('Category')
     .select('*, channels:Channel(*)')
@@ -98,10 +97,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
             "use server";
             const name = formData.get("name") as string;
             const icon = formData.get("icon") as string;
-            if(name) {
-                const { supabase: s } = await import("@/lib/supabase");
-                await s.from('Category').insert({ name, icon });
-            }
+            if(name) await createCategory(name, icon);
           }} className="glass-panel" style={{ padding: '16px', marginBottom: '24px', display: 'flex', gap: '8px', alignItems: 'center' }}>
             <input type="text" name="name" placeholder="Nova Categoria..." className="input-field" required style={{ flex: 1 }} />
             <input type="text" name="icon" placeholder="URL Ícone (Opcional)" className="input-field" style={{ flex: 1 }} />
@@ -118,11 +114,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                    {cat.name.toUpperCase()}
                  </h3>
                  {isAdmin && (
-                    <form action={async () => { 
-                        "use server"; 
-                        const { supabase: s } = await import("@/lib/supabase");
-                        await s.from('Category').delete().eq('id', cat.id); 
-                    }}>
+                    <form action={async () => { "use server"; await deleteCategory(cat.id); }}>
                        <button type="submit" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={18}/></button>
                     </form>
                  )}
@@ -138,11 +130,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                         </div>
                       </Link>
                       {isAdmin && (
-                         <form action={async () => { 
-                             "use server"; 
-                             const { supabase: s } = await import("@/lib/supabase");
-                             await s.from('Channel').delete().eq('id', ch.id); 
-                         }} style={{ marginLeft: '12px' }}>
+                         <form action={async () => { "use server"; await deleteChannel(ch.id); }} style={{ marginLeft: '12px' }}>
                             <button type="submit" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '8px' }}><Trash2 size={16}/></button>
                          </form>
                       )}
@@ -153,10 +141,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                     <form action={async (formData) => {
                       "use server";
                       const name = formData.get("name") as string;
-                      if(name) {
-                          const { supabase: s } = await import("@/lib/supabase");
-                          await s.from('Channel').insert({ categoryId: cat.id, name });
-                      }
+                      if(name) await createChannel(cat.id, name);
                     }} style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                       <input type="text" name="name" placeholder="novo-canal" className="input-field" required style={{ flex: 1, padding: '10px' }} />
                       <button type="submit" className="btn-secondary" style={{ padding: '0 16px' }}><Plus size={16}/></button>
@@ -165,7 +150,12 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                </div>
             </div>
           ))}
-          {(!categories || categories.length === 0) && <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhuma categoria disponível.</p>}
+          {(!categories || categories.length === 0) && (
+            <div className="glass-panel" style={{ padding: '40px', textAlign: 'center' }}>
+               <p style={{ color: 'var(--text-muted)', marginBottom: '16px' }}>Nenhuma categoria disponível.</p>
+               {isAdmin && <p style={{ color: 'var(--accent-purple-light)' }}>Use o painel acima para criar sua primeira categoria!</p>}
+            </div>
+          )}
         </div>
 
         {!isRealAdmin && <RealtimeSync />}
