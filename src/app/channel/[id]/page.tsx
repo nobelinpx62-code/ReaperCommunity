@@ -5,9 +5,9 @@ import TokenGate from "@/components/TokenGate"
 import Post from "@/components/Post"
 import CreatePost from "@/components/CreatePost"
 import Link from "next/link"
-import { prisma } from "@/lib/prisma"
 import { ArrowLeft, Hash } from "lucide-react"
 import RealtimeSync from "@/components/RealtimeSync"
+import { supabase } from "@/lib/supabase"
 
 const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
 
@@ -22,28 +22,32 @@ export default async function ChannelPage({ params, searchParams }: { params: Pr
   const isRealAdmin = ADMIN_IDS.includes(user?.discordId);
   const isAdmin = isRealAdmin && !isMemberView;
 
-  if (!user.agreedTerms) return <TermsGate />;
-  if (!isAdmin && !user.verifiedToken) return <TokenGate />;
+  if (!user.agreedTerms && !isRealAdmin) return <TermsGate />;
+  if (!isAdmin && !user.verifiedToken && !isRealAdmin) return <TokenGate />;
 
   const resolvedParams = await params;
 
-  const channel = await prisma.channel.findUnique({
-    where: { id: resolvedParams.id },
-    include: {
-      category: true,
-      posts: {
-        include: { 
-           author: true,
-           likes: true,
-           comments: { include: { user: true }, orderBy: { createdAt: 'asc' } },
-           ratings: true
-        },
-        orderBy: { createdAt: 'desc' }
-      }
-    }
-  });
+  // Busca o canal e seus posts usando Supabase
+  const { data: channelData } = await supabase
+    .from('Channel')
+    .select('*, category:Category(*)')
+    .eq('id', resolvedParams.id)
+    .single();
 
-  if (!channel) return <div style={{ color: "white", padding: "40px", textAlign: "center" }}>Canal não encontrado.</div>;
+  if (!channelData) return <div style={{ color: "white", padding: "40px", textAlign: "center" }}>Canal não encontrado.</div>;
+
+  // Busca os posts com relações
+  const { data: postsData = [] } = await supabase
+    .from('Post')
+    .select(`
+        *,
+        author:User(*),
+        likes:Like(*),
+        comments:Comment(*, user:User(*)),
+        ratings:Rating(*)
+    `)
+    .eq('channelId', resolvedParams.id)
+    .order('createdAt', { ascending: false });
 
   return (
     <main className="app-container animate-fade-in" style={{ paddingBottom: '100px', gridTemplateColumns: 'minmax(0, 1fr)', maxWidth: '900px' }}>
@@ -59,15 +63,14 @@ export default async function ChannelPage({ params, searchParams }: { params: Pr
                <Hash size={40} color="var(--accent-red)" />
              </div>
              <div>
-                <p style={{ color: 'var(--accent-purple-light)', fontSize: '0.9rem', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px' }}>{channel.category.name}</p>
-                <h1 className="brand-font" style={{ fontSize: '2.5rem', color: 'var(--text-primary)', margin: 0 }}>{channel.name}</h1>
+                <p style={{ color: 'var(--accent-purple-light)', fontSize: '0.9rem', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px' }}>{channelData.category.name}</p>
+                <h1 className="brand-font" style={{ fontSize: '2.5rem', color: 'var(--text-primary)', margin: 0 }}>{channelData.name}</h1>
              </div>
           </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', marginTop: '32px' }}>
-            {channel.posts.map(post => {
-              // Transform DB post to match PostProps style used in Component
+            {(postsData || []).map((post: any) => {
               const mappedPost = {
                 id: post.id,
                 author: {
@@ -85,29 +88,29 @@ export default async function ChannelPage({ params, searchParams }: { params: Pr
                 imageSize: post.imageSize,
                 isSpoiler: post.isSpoiler,
                 likes: post.likes.length,
-                hasLiked: post.likes.some(l => l.userId === user.id),
-                comments: post.comments.map(c => ({
+                hasLiked: post.likes.some((l: any) => l.userId === user.id),
+                comments: post.comments.map((c: any) => ({
                     id: c.id,
                     text: c.text,
                     authorName: c.user.name || "Membro",
                     authorAvatar: c.user.image || "https://images.unsplash.com/photo-1542385151-efd9000785a0?q=80&w=200&auto=format&fit=crop",
-                    timestamp: c.createdAt.toLocaleDateString('pt-BR')
+                    timestamp: new Date(c.createdAt).toLocaleDateString('pt-BR')
                 })),
-                ratings: post.ratings.map(r => r.stars),
-                userRating: post.ratings.find(r => r.userId === user.id)?.stars || 0,
-                timestamp: post.createdAt.toLocaleDateString('pt-BR')
+                ratings: post.ratings.map((r: any) => r.stars),
+                userRating: post.ratings.find((r: any) => r.userId === user.id)?.stars || 0,
+                timestamp: new Date(post.createdAt).toLocaleDateString('pt-BR')
               };
-              return <Post key={mappedPost.id} post={mappedPost} channelId={channel.id} isAdmin={isAdmin} />
+              return <Post key={mappedPost.id} post={mappedPost} channelId={channelData.id} isAdmin={isAdmin} />
             })}
             
-            {channel.posts.length === 0 && (
+            {(!postsData || postsData.length === 0) && (
               <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum conteúdo postado neste canal ainda.</p>
             )}
         </div>
         
         {isAdmin ? (
             <div style={{ marginTop: '32px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '32px' }}>
-                <CreatePost user={user} channelId={channel.id} />
+                <CreatePost user={user} channelId={channelData.id} />
             </div>
         ) : (
             <div className="glass-panel" style={{ padding: '24px', textAlign: 'center', border: '1px solid rgba(138, 31, 36, 0.4)', background: 'rgba(138, 31, 36, 0.05)', marginTop: '32px' }}>
@@ -116,7 +119,7 @@ export default async function ChannelPage({ params, searchParams }: { params: Pr
             </div>
         )}
         
-        {!isAdmin && <RealtimeSync />}
+        {!isRealAdmin && <RealtimeSync />}
       </div>
     </main>
   );
