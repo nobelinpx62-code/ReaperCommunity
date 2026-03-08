@@ -13,6 +13,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   ],
   session: { strategy: "database" },
   secret: process.env.AUTH_SECRET || "fallback-secret-for-reaper-community-12345",
+  debug: true,
+  trustHost: true,
   callbacks: {
     async session({ session, user }: any) {
       if (session.user) {
