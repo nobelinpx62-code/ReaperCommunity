@@ -11,21 +11,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         clientSecret: process.env.DISCORD_CLIENT_SECRET || "demo-client-secret",
     }),
   ],
-  session: { strategy: "database" },
-  secret: process.env.AUTH_SECRET || "fallback-secret-for-reaper-community-12345",
-  debug: true,
+  session: { strategy: "jwt" }, // MUDADO: JWT é muito mais estável na Vercel
+  secret: process.env.AUTH_SECRET,
   trustHost: true,
   callbacks: {
-    async session({ session, user }: any) {
+    async jwt({ token, user, account } : any) {
+      if (user) {
+        token.id = user.id;
+        token.agreedTerms = (user as any).agreedTerms;
+        token.verifiedToken = (user as any).verifiedToken;
+      }
+      if (account) {
+        token.discordId = account.providerAccountId;
+      }
+      return token;
+    },
+    async session({ session, token }: any) {
       if (session.user) {
-        session.user.id = user.id;
-        session.user.agreedTerms = user.agreedTerms;
-        session.user.verifiedToken = user.verifiedToken;
-
-        const account = await prisma.account.findFirst({
-           where: { userId: user.id, provider: "discord" }
-        });
-        session.user.discordId = account?.providerAccountId;
+        session.user.id = token.id;
+        session.user.agreedTerms = token.agreedTerms;
+        session.user.verifiedToken = token.verifiedToken;
+        session.user.discordId = token.discordId;
       }
       return session;
     },
