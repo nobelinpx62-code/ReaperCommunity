@@ -1,9 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { loginAction, logoutAction } from "@/app/actions/authActions";
+import { logoutAction } from "@/app/actions/authActions";
 
 export default function Header({ session }: { session: any }) {
+  // O Supabase session tem session.user.user_metadata
+  const userMetadata = session?.user?.user_metadata || {};
+  const avatar = userMetadata.avatar_url || session?.user?.image;
+  const name = userMetadata.full_name || session?.user?.name || "USUÁRIO";
+
   return (
     <header className="glass-panel" style={{ 
       margin: '20px 24px', 
@@ -23,15 +28,15 @@ export default function Header({ session }: { session: any }) {
         {session ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {session.user?.image && (
+                    {avatar && (
                       <div className="avatar-glow">
-                        <img src={session.user.image} alt="Avatar" style={{ width: '40px', height: '40px' }} />
+                        <img src={avatar} alt="Avatar" style={{ width: '40px', height: '40px' }} />
                       </div>
                     )}
-                    <span style={{ fontWeight: 600 }}>{session.user?.name}</span>
+                    <span style={{ fontWeight: 600 }}>{name.toUpperCase()}</span>
                 </div>
                 <form action={logoutAction}>
-                    <button className="btn-secondary">Logout</button>
+                    <button type="submit" className="btn-secondary">SAIR</button>
                 </form>
             </div>
         ) : (

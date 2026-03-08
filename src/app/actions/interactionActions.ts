@@ -1,81 +1,82 @@
 "use server"
 
-import { auth } from "@/auth"
-import { prisma } from "@/lib/prisma"
+import { createServerActionClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 import { revalidatePath } from "next/cache"
 
+async function getAuth() {
+  const supabase = createServerActionClient({ cookies })
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error("Não autorizado");
+  return { supabase, session };
+}
+
 export async function toggleLike(postId: string, channelId: string) {
-  const session = await auth() as any;
-  if (!session?.user?.id) throw new Error("Não autorizado");
+  try {
+    const { supabase, session } = await getAuth();
+    const userId = session.user.id;
 
-  const userId = session.user.id;
+    const { data: existingLike } = await supabase
+      .from('Like')
+      .select('id')
+      .eq('post_id', postId)
+      .eq('user_id', userId)
+      .maybeSingle();
 
-  const existingLike = await prisma.like.findUnique({
-    where: {
-      postId_userId: {
-        postId,
-        userId
-      }
+    if (existingLike) {
+      await supabase.from('Like').delete().eq('id', existingLike.id);
+    } else {
+      await supabase.from('Like').insert({ post_id: postId, user_id: userId });
     }
-  });
 
-  if (existingLike) {
-    await prisma.like.delete({
-      where: { id: existingLike.id }
-    });
-  } else {
-    await prisma.like.create({
-      data: { postId, userId }
-    });
+    revalidatePath(`/channel/${channelId}`);
+    revalidatePath("/");
+  } catch (e: any) {
+    console.error("Like error:", e.message);
   }
-
-  revalidatePath(`/channel/${channelId}`);
 }
 
 export async function addComment(postId: string, channelId: string, text: string) {
-  const session = await auth() as any;
-  if (!session?.user?.id) throw new Error("Não autorizado");
+  try {
+    const { supabase, session } = await getAuth();
+    if (!text.trim()) return;
 
-  if (!text.trim()) return;
-
-  await prisma.comment.create({
-    data: {
+    await supabase.from('Comment').insert({
       text: text.trim(),
-      postId,
-      userId: session.user.id
-    }
-  });
+      post_id: postId,
+      user_id: session.user.id
+    });
 
-  revalidatePath(`/channel/${channelId}`);
+    revalidatePath(`/channel/${channelId}`);
+    revalidatePath("/");
+  } catch (e: any) {
+    console.error("Comment error:", e.message);
+  }
 }
 
 export async function submitRating(postId: string, channelId: string, stars: number) {
-  const session = await auth() as any;
-  if (!session?.user?.id) throw new Error("Não autorizado");
+  try {
+    const { supabase, session } = await getAuth();
+    if (stars < 1 || stars > 5) return;
 
-  if (stars < 1 || stars > 5) return;
+    const userId = session.user.id;
 
-  const userId = session.user.id;
+    const { data: existingRating } = await supabase
+      .from('Rating')
+      .select('id')
+      .eq('post_id', postId)
+      .eq('user_id', userId)
+      .maybeSingle();
 
-  const existingRating = await prisma.rating.findUnique({
-    where: {
-      postId_userId: {
-        postId,
-        userId
-      }
+    if (existingRating) {
+      await supabase.from('Rating').update({ stars }).eq('id', existingRating.id);
+    } else {
+      await supabase.from('Rating').insert({ post_id: postId, user_id: userId, stars });
     }
-  });
 
-  if (existingRating) {
-    await prisma.rating.update({
-      where: { id: existingRating.id },
-      data: { stars }
-    });
-  } else {
-    await prisma.rating.create({
-      data: { postId, userId, stars }
-    });
+    revalidatePath(`/channel/${channelId}`);
+    revalidatePath("/");
+  } catch (e: any) {
+    console.error("Rating error:", e.message);
   }
-
-  revalidatePath(`/channel/${channelId}`);
 }

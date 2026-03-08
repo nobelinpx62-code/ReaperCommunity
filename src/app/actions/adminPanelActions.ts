@@ -1,74 +1,71 @@
 "use server"
 
-import { auth } from "@/auth"
-import { prisma } from "@/lib/prisma"
+import { createServerActionClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 import { revalidatePath } from "next/cache"
 import crypto from "crypto"
 
 const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
 
-export async function promoteToStaff(discordIdOrEmail: string) {
-  const session = await auth() as any;
-  if (!session?.user?.id) return { error: "Não autorizado" };
-
-  const isDiscordAdmin = ADMIN_IDS.includes(session.user.discordId);
-  if (!isDiscordAdmin) return { error: "Apenas Owner" };
-
-  const searchTerm = discordIdOrEmail.trim();
-
-  let user = await prisma.user.findFirst({
-    where: { 
-      accounts: { some: { providerAccountId: searchTerm } } 
-    }
-  });
-
-  if (!user) {
-    user = await prisma.user.findFirst({ 
-      where: { email: { equals: searchTerm } } 
-    });
-  }
+async function checkAdmin() {
+  const supabase = createServerActionClient({ cookies })
+  const { data: { session } } = await supabase.auth.getSession()
   
-  if (!user) {
-      user = await prisma.user.findFirst({ 
-        where: { name: { contains: searchTerm } } 
-      });
+  if (!session) throw new Error("Não autenticado");
+  
+  const discordId = session.user.user_metadata?.provider_id || session.user.id
+  const isAdmin = ADMIN_IDS.includes(discordId)
+  
+  if (!isAdmin) throw new Error("Acesso Negado: Apenas Root Admin");
+  return { supabase, session, discordId };
+}
+
+export async function promoteToStaff(searchTerm: string) {
+  try {
+    const { supabase } = await checkAdmin();
+    const query = searchTerm.trim();
+
+    // Busca usuário no Supabase por discord_id ou email
+    const { data: user, error: fetchError } = await supabase
+      .from('User')
+      .select('*')
+      .or(`discord_id.eq.${query},email.eq.${query}`)
+      .maybeSingle();
+
+    if (!user) return { error: "Usuário não encontrado!" };
+
+    const { error: updateError } = await supabase
+      .from('User')
+      .update({ role: "STAFF" })
+      .eq('id', user.id);
+
+    if (updateError) throw updateError;
+
+    revalidatePath("/");
+    return { success: true, userName: user.name };
+  } catch (e: any) {
+    console.error("Promote error:", e.message);
+    return { error: e.message };
   }
-
-  if (!user) {
-      return { error: "Usuário não encontrado!" };
-  }
-
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { role: "STAFF" }
-  });
-
-  revalidatePath("/");
-  return { success: true, userName: user.name };
 }
 
 export async function demoteToUser(userId: string) {
-  const session = await auth() as any;
-  if (!session?.user?.id) throw new Error("Não autorizado");
-
-  const isDiscordAdmin = ADMIN_IDS.includes(session.user.discordId);
-  if (!isDiscordAdmin) throw new Error("Apenas Owner");
-
-  await prisma.user.update({
-    where: { id: userId },
-    data: { role: "USER" }
-  });
-
-  revalidatePath("/");
+  try {
+    const { supabase } = await checkAdmin();
+    await supabase.from('User').update({ role: "USER" }).eq('id', userId);
+    revalidatePath("/");
+  } catch (e: any) {
+    console.error("Demote error:", e.message);
+  }
 }
 
 export async function generateToken() {
-  const session = await auth() as any;
-  if (!session?.user?.id) throw new Error("Não autorizado");
-
-  const isDiscordAdmin = ADMIN_IDS.includes(session.user.discordId);
-  if (!isDiscordAdmin) throw new Error("Apenas Owner");
-
-  const rand = crypto.randomBytes(6).toString("hex").toUpperCase();
-  return `REAPER-V-${rand}`;
+  try {
+    await checkAdmin();
+    const rand = crypto.randomBytes(6).toString("hex").toUpperCase();
+    return `REAPER-V-${rand}`;
+  } catch (e: any) {
+    console.error("Token gen error:", e.message);
+    throw e;
+  }
 }
