@@ -3,7 +3,7 @@ import LoginGate from "@/components/LoginGate"
 import TermsGate from "@/components/TermsGate"
 import TokenGate from "@/components/TokenGate"
 import Link from "next/link"
-import { Hash, Plus, Trash2, ShieldCheck } from "lucide-react"
+import { Hash, Plus, Trash2, ShieldCheck, AlertCircle } from "lucide-react"
 import RealtimeSync from "@/components/RealtimeSync"
 import TicketPanel from "@/components/TicketPanel"
 import AdminPanel from "@/components/AdminPanel"
@@ -14,7 +14,6 @@ const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
 
 export default async function Home(props: { searchParams: Promise<{ view?: string }> }) {
   const session = await auth()
-
   if (!session) return <LoginGate />;
 
   const user = session.user as any;
@@ -27,40 +26,40 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
   if (!user.agreedTerms && !isRealAdmin) return <TermsGate />;
   if (!isAdmin && !user.verifiedToken && !isRealAdmin) return <TokenGate />;
 
-  const { data: dbUser } = await supabase
-    .from('User')
-    .select('*')
-    .eq('id', user.id)
-    .single();
-
+  // Dados do usuário
+  const { data: dbUser } = await supabase.from('User').select('*').eq('id', user.id).maybeSingle();
   const isStaff = isRealAdmin || dbUser?.role === "STAFF" || dbUser?.role === "ADMIN";
   const activeStaffMode = isStaff && !isMemberView;
 
-  const ticketsQuery = supabase
-    .from('Ticket')
-    .select('*, user:User(*), messages:TicketMessage(*, user:User(*))')
-    .order('status', { ascending: false })
-    .order('createdAt', { ascending: false });
-
-  if (!activeStaffMode) {
-    ticketsQuery.eq('userId', user.id);
-  }
-
-  const { data: ticketsData } = await ticketsQuery;
-  const tickets = ticketsData || [];
-
-  const { data: categoriesData } = await supabase
+  // Busca Categorias e Canais - Modo Robusto
+  const { data: categoriesData, error: catError } = await supabase
     .from('Category')
-    .select('*, channels:Channel(*)')
+    .select('*, Channel(*)')
     .order('createdAt', { ascending: true });
-  const categories = categoriesData || [];
+
+  if (catError) console.error("ERRO AO BUSCAR CATEGORIAS:", catError.message);
+  
+  // Mapeia os canais (Supabase retorna o nome da tabela por padrão se não houver alias)
+  const categories = (categoriesData || []).map((cat: any) => ({
+      ...cat,
+      channels: cat.Channel || []
+  }));
+
+  // Busca Tickets
+  const { data: ticketsData } = await supabase
+    .from('Ticket')
+    .select('*, User(*), TicketMessage(*, User(*))')
+    .order('createdAt', { ascending: false });
+  
+  const tickets = (ticketsData || []).map((tk: any) => ({
+      ...tk,
+      user: tk.User,
+      messages: tk.TicketMessage || []
+  }));
 
   let allUsers = [];
   if (isAdmin) {
-    const { data: usersData } = await supabase
-      .from('User')
-      .select('*, accounts:Account(*)')
-      .order('createdAt', { ascending: false });
+    const { data: usersData } = await supabase.from('User').select('*, accounts:Account(*)').order('createdAt', { ascending: false });
     allUsers = usersData || [];
   }
 
@@ -79,18 +78,21 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
 
           {isRealAdmin && (
              <div style={{ display: 'flex', justifyContent: 'center', gap: '16px' }}>
-                <Link href="/" className={!isMemberView ? "btn-primary" : "btn-secondary"} style={{ textDecoration: 'none', padding: '8px 16px', fontSize: '0.9rem' }}>
-                    Modo Root (Painel)
-                </Link>
-                <Link href="/?view=member" className={isMemberView ? "btn-primary" : "btn-secondary"} style={{ textDecoration: 'none', padding: '8px 16px', fontSize: '0.9rem' }}>
-                    Visualização Modo Membro
-                </Link>
+                <Link href="/" className={!isMemberView ? "btn-primary" : "btn-secondary"} style={{ textDecoration: 'none', padding: '8px 16px', fontSize: '0.9rem' }}>Modo Root (Painel)</Link>
+                <Link href="/?view=member" className={isMemberView ? "btn-primary" : "btn-secondary"} style={{ textDecoration: 'none', padding: '8px 16px', fontSize: '0.9rem' }}>Visualização Modo Membro</Link>
              </div>
           )}
          </div>
 
+         {catError && (
+             <div className="glass-panel" style={{ padding: '16px', marginBottom: '24px', border: '1px solid var(--accent-red)', background: 'rgba(138, 31, 36, 0.1)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <AlertCircle color="var(--accent-red)" />
+                <p style={{ color: 'var(--text-primary)', margin: 0 }}>Erro na comunicação com o banco: {catError.message}. Recarregue a página.</p>
+             </div>
+         )}
+
          {isAdmin && <AdminPanel users={allUsers} isRealAdmin={isAdmin} />}
-         <TicketPanel user={{...user, role: dbUser?.role || "USER"}} tickets={tickets as any} isStaff={activeStaffMode} />
+         <TicketPanel user={{...user, role: dbUser?.role || "USER"}} tickets={ticketsData || []} isStaff={activeStaffMode} />
 
          {isAdmin && (
           <form action={async (formData) => {
@@ -106,7 +108,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {(categories || []).map((cat: any) => (
+          {categories.map((cat: any) => (
             <div key={cat.id} className="glass-panel" style={{ padding: '24px' }}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '12px' }}>
                  <h3 className="brand-font text-gradient-red" style={{ fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -121,7 +123,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                </div>
 
                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginLeft: '12px' }}>
-                 {(cat.channels || []).map((ch: any) => (
+                 {cat.channels.map((ch: any) => (
                     <div key={ch.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <Link href={`/channel/${ch.id}${isMemberView ? '?view=member' : ''}`} style={{ textDecoration: 'none', flex: 1 }}>
                         <div className="channel-card">
@@ -150,11 +152,11 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                </div>
             </div>
           ))}
-          {(!categories || categories.length === 0) && (
-            <div className="glass-panel" style={{ padding: '40px', textAlign: 'center' }}>
-               <p style={{ color: 'var(--text-muted)', marginBottom: '16px' }}>Nenhuma categoria disponível.</p>
-               {isAdmin && <p style={{ color: 'var(--accent-purple-light)' }}>Use o painel acima para criar sua primeira categoria!</p>}
-            </div>
+          {(!categories || categories.length === 0) && !catError && (
+             <div className="glass-panel" style={{ padding: '40px', textAlign: 'center' }}>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '16px' }}>Nenhuma categoria disponível.</p>
+                {isAdmin && <p style={{ color: 'var(--accent-purple-light)' }}>Use o painel acima para criar sua primeira categoria!</p>}
+             </div>
           )}
         </div>
 

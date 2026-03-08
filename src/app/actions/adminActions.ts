@@ -5,48 +5,65 @@ import { supabase } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
 import crypto from "crypto"
 
-const ADMIN_IDS = ["1313535117792378891", "1144048134109003816"];
+// IDs Administradores CONFIRMADOS
+const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
+
+async function checkAdmin() {
+  const session = await auth() as any;
+  const discordId = session?.user?.discordId;
+  const isIdAdmin = discordId && ADMIN_IDS.includes(discordId);
+  
+  if (!isIdAdmin) {
+    console.error("Tentativa de ação admin negada para:", discordId);
+    throw new Error("Acesso Negado: Você não é um administrador root.");
+  }
+  return session;
+}
 
 export async function createCategory(name: string, iconUrl?: string) {
-  const session = await auth() as any;
-  if (!session?.user?.discordId || !ADMIN_IDS.includes(session.user.discordId)) throw new Error("Acesso Negado");
+  const session = await checkAdmin();
 
-  const { error } = await supabase.from('Category').insert({ 
+  const { data, error } = await supabase.from('Category').insert({ 
     id: crypto.randomUUID(),
-    name, 
-    icon: iconUrl || null 
-  });
+    name: name.trim(), 
+    icon: iconUrl?.trim() || null 
+  }).select();
   
-  if (error) console.error("Error creating category:", error);
+  if (error) {
+    console.error("ERRO SUPABASE (Category):", error.message);
+    throw new Error(error.message);
+  }
+  
   revalidatePath("/");
+  return data;
 }
 
 export async function deleteCategory(id: string) {
-    const session = await auth() as any;
-    if (!session?.user?.discordId || !ADMIN_IDS.includes(session.user.discordId)) throw new Error("Acesso Negado");
-  
+    await checkAdmin();
     await supabase.from('Category').delete().eq('id', id);
     revalidatePath("/");
 }
 
 export async function createChannel(categoryId: string, name: string) {
-    const session = await auth() as any;
-    if (!session?.user?.discordId || !ADMIN_IDS.includes(session.user.discordId)) throw new Error("Acesso Negado");
+    await checkAdmin();
   
-    const { error } = await supabase.from('Channel').insert({ 
+    const { data, error } = await supabase.from('Channel').insert({ 
       id: crypto.randomUUID(),
-      name, 
+      name: name.trim().toLowerCase().replace(/\s+/g, '-'), 
       categoryId 
-    });
+    }).select();
 
-    if (error) console.error("Error creating channel:", error);
+    if (error) {
+       console.error("ERRO SUPABASE (Channel):", error.message);
+       throw new Error(error.message);
+    }
+    
     revalidatePath("/");
+    return data;
 }
 
 export async function deleteChannel(id: string) {
-    const session = await auth() as any;
-    if (!session?.user?.discordId || !ADMIN_IDS.includes(session.user.discordId)) throw new Error("Acesso Negado");
-  
+    await checkAdmin();
     await supabase.from('Channel').delete().eq('id', id);
     revalidatePath("/");
 }
@@ -63,8 +80,7 @@ export async function createPost(data: {
     imageSize?: string,
     isSpoiler?: boolean
 }) {
-    const session = await auth() as any;
-    if (!session?.user?.discordId || !ADMIN_IDS.includes(session.user.discordId)) throw new Error("Acesso Negado");
+    const session = await checkAdmin();
   
     const { error } = await supabase.from('Post').insert({
         id: crypto.randomUUID(),
@@ -74,12 +90,4 @@ export async function createPost(data: {
 
     if (error) console.error("Error creating post:", error);
     revalidatePath(`/channel/${data.channelId}`);
-}
-
-export async function deletePost(id: string, channelId: string) {
-    const session = await auth() as any;
-    if (!session?.user?.discordId || !ADMIN_IDS.includes(session.user.discordId)) throw new Error("Acesso Negado");
-  
-    await supabase.from('Post').delete().eq('id', id);
-    revalidatePath(`/channel/${channelId}`);
 }
