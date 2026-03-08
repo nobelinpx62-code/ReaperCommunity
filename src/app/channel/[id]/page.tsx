@@ -1,4 +1,5 @@
-import { auth } from "@/auth"
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 import LoginGate from "@/components/LoginGate"
 import TermsGate from "@/components/TermsGate"
 import TokenGate from "@/components/TokenGate"
@@ -7,30 +8,34 @@ import CreatePost from "@/components/CreatePost"
 import Link from "next/link"
 import { ArrowLeft, Hash } from "lucide-react"
 import RealtimeSync from "@/components/RealtimeSync"
-import { supabase } from "@/lib/supabase"
 
 const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
 
 export default async function ChannelPage({ params, searchParams }: { params: Promise<{ id: string }>, searchParams: Promise<{ view?: string }> }) {
-  const session = await auth()
+  const supabase = createServerComponentClient({ cookies })
+  const { data: { session } } = await supabase.auth.getSession()
 
   if (!session) return <LoginGate />;
 
-  const user = session.user as any;
+  const user = session.user;
   const resolvedSearchParams = await searchParams;
   const isMemberView = resolvedSearchParams?.view === "member";
-  const isRealAdmin = ADMIN_IDS.includes(user?.discordId);
+  
+  const discordId = user.user_metadata?.provider_id || user.id
+  const isRealAdmin = ADMIN_IDS.includes(discordId);
   const isAdmin = isRealAdmin && !isMemberView;
 
-  if (!user.agreedTerms && !isRealAdmin) return <TermsGate />;
-  if (!isAdmin && !user.verifiedToken && !isRealAdmin) return <TokenGate />;
+  const { data: dbUser } = await supabase.from('User').select('*').eq('discord_id', discordId).maybeSingle()
+  
+  if (!dbUser?.agreed_terms && !isRealAdmin) return <TermsGate />;
+  // TokenGate can be added here if needed
 
   const resolvedParams = await params;
 
-  // Busca o canal e seus posts usando Supabase
+  // Busca o canal e seus posts usando Supabase (Snake Case)
   const { data: channelData } = await supabase
     .from('Channel')
-    .select('*, category:Category(*)')
+    .select('*, Category(*)')
     .eq('id', resolvedParams.id)
     .single();
 
@@ -41,13 +46,13 @@ export default async function ChannelPage({ params, searchParams }: { params: Pr
     .from('Post')
     .select(`
         *,
-        author:User(*),
-        likes:Like(*),
-        comments:Comment(*, user:User(*)),
-        ratings:Rating(*)
+        User(*),
+        Like(*),
+        Comment(*, User(*)),
+        Rating(*)
     `)
-    .eq('channelId', resolvedParams.id)
-    .order('createdAt', { ascending: false });
+    .eq('channel_id', resolvedParams.id)
+    .order('created_at', { ascending: false });
 
   return (
     <main className="app-container animate-fade-in" style={{ paddingBottom: '100px', gridTemplateColumns: 'minmax(0, 1fr)', maxWidth: '900px' }}>
@@ -63,7 +68,7 @@ export default async function ChannelPage({ params, searchParams }: { params: Pr
                <Hash size={40} color="var(--accent-red)" />
              </div>
              <div>
-                <p style={{ color: 'var(--accent-purple-light)', fontSize: '0.9rem', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px' }}>{channelData.category.name}</p>
+                <p style={{ color: 'var(--accent-purple-light)', fontSize: '0.9rem', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px' }}>{channelData.Category?.name}</p>
                 <h1 className="brand-font" style={{ fontSize: '2.5rem', color: 'var(--text-primary)', margin: 0 }}>{channelData.name}</h1>
              </div>
           </div>
@@ -74,31 +79,31 @@ export default async function ChannelPage({ params, searchParams }: { params: Pr
               const mappedPost = {
                 id: post.id,
                 author: {
-                   name: post.author.name || "Reaper Admin",
-                   handle: "admin",
-                   avatar: post.author.image || "https://images.unsplash.com/photo-1542385151-efd9000785a0?q=80&w=200&auto=format&fit=crop"
+                   name: post.User?.name || post.owner_name || "Reaper Admin",
+                   handle: post.User?.role || "admin",
+                   avatar: post.User?.avatar_url || "https://images.unsplash.com/photo-1542385151-efd9000785a0?q=80&w=200&auto=format&fit=crop"
                 },
                 title: post.title,
                 content: post.content,
                 banner: post.banner,
-                video: post.video,
-                ownerName: post.ownerName,
-                externalLink: post.externalLink,
-                fileUrl: post.fileUrl,
-                imageSize: post.imageSize,
-                isSpoiler: post.isSpoiler,
-                likes: post.likes.length,
-                hasLiked: post.likes.some((l: any) => l.userId === user.id),
-                comments: post.comments.map((c: any) => ({
+                video: post.video_url,
+                ownerName: post.owner_name,
+                externalLink: post.external_link,
+                fileUrl: post.file_url,
+                imageSize: post.image_size,
+                isSpoiler: post.is_spoiler,
+                likes: (post.Like || []).length,
+                hasLiked: (post.Like || []).some((l: any) => l.user_id === user.id),
+                comments: (post.Comment || []).map((c: any) => ({
                     id: c.id,
                     text: c.text,
-                    authorName: c.user.name || "Membro",
-                    authorAvatar: c.user.image || "https://images.unsplash.com/photo-1542385151-efd9000785a0?q=80&w=200&auto=format&fit=crop",
-                    timestamp: new Date(c.createdAt).toLocaleDateString('pt-BR')
+                    authorName: c.User?.name || "Membro",
+                    authorAvatar: c.User?.avatar_url || "https://images.unsplash.com/photo-1542385151-efd9000785a0?q=80&w=200&auto=format&fit=crop",
+                    timestamp: new Date(c.created_at).toLocaleDateString('pt-BR')
                 })),
-                ratings: post.ratings.map((r: any) => r.stars),
-                userRating: post.ratings.find((r: any) => r.userId === user.id)?.stars || 0,
-                timestamp: new Date(post.createdAt).toLocaleDateString('pt-BR')
+                ratings: (post.Rating || []).map((r: any) => r.stars),
+                userRating: (post.Rating || []).find((r: any) => r.user_id === user.id)?.stars || 0,
+                timestamp: new Date(post.created_at).toLocaleDateString('pt-BR')
               };
               return <Post key={mappedPost.id} post={mappedPost} channelId={channelData.id} isAdmin={isAdmin} />
             })}

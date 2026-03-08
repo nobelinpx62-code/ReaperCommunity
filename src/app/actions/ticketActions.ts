@@ -1,68 +1,82 @@
 "use server"
 
-import { auth } from "@/auth"
-import { supabase } from "@/lib/supabase"
+import { createServerActionClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 import { revalidatePath } from "next/cache"
-import crypto from "crypto"
 
 const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
 
+async function getAuth() {
+  const supabase = createServerActionClient({ cookies })
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error("Não autorizado");
+  
+  const discordId = session.user.user_metadata?.provider_id || session.user.id
+  const isIdAdmin = ADMIN_IDS.includes(discordId)
+  
+  return { supabase, session, discordId, isIdAdmin };
+}
+
 export async function createTicket(reason: string) {
-  const session = await auth() as any;
-  if (!session?.user?.id) throw new Error("Não autorizado");
+  try {
+    const { supabase, session, discordId } = await getAuth();
+    if (!reason.trim()) return;
 
-  if (!reason.trim()) return;
+    await supabase.from('Ticket').insert({
+      user_id: session.user.id,
+      discord_id: discordId,
+      reason: reason.trim(),
+      status: 'OPEN'
+    });
 
-  const { error } = await supabase.from('Ticket').insert({
-    id: crypto.randomUUID(),
-    userId: session.user.id,
-    reason: reason.trim(),
-    status: 'OPEN'
-  });
-
-  if (error) console.error("Error creating ticket:", error);
-  revalidatePath("/");
+    revalidatePath("/");
+  } catch (e: any) {
+    console.error("Ticket error:", e.message);
+  }
 }
 
 export async function addTicketMessage(ticketId: string, text: string) {
-  const session = await auth() as any;
-  if (!session?.user?.id) throw new Error("Não autorizado");
+  try {
+    const { supabase, session, isIdAdmin } = await getAuth();
+    
+    const { data: ticket } = await supabase.from('Ticket').select('user_id').eq('id', ticketId).single();
+    if (!ticket) return;
 
-  const { data: ticket } = await supabase.from('Ticket').select('userId').eq('id', ticketId).single();
-  if (!ticket) return;
+    // Busca Cargo Staff (opcional)
+    const { data: dbUser } = await supabase.from('User').select('role').eq('id', session.user.id).maybeSingle();
+    const isStaff = isIdAdmin || dbUser?.role === "STAFF" || dbUser?.role === "ADMIN";
 
-  const isDiscordAdmin = ADMIN_IDS.includes(session.user.discordId);
-  const { data: dbUser } = await supabase.from('User').select('role').eq('id', session.user.id).single();
-  const isStaff = isDiscordAdmin || dbUser?.role === "STAFF" || dbUser?.role === "ADMIN";
+    if (!isStaff && ticket.user_id !== session.user.id) return;
 
-  if (!isStaff && ticket.userId !== session.user.id) return;
+    await supabase.from('TicketMessage').insert({
+      ticket_id: ticketId,
+      user_id: session.user.id,
+      text: text.trim(),
+      is_staff: isStaff
+    });
 
-  const { error } = await supabase.from('TicketMessage').insert({
-    id: crypto.randomUUID(),
-    ticketId,
-    userId: session.user.id,
-    text: text.trim(),
-    isStaff: isStaff
-  });
-
-  if (error) console.error("Error adding message:", error);
-  revalidatePath("/");
+    revalidatePath("/");
+  } catch (e: any) {
+    console.error("Message error:", e.message);
+  }
 }
 
 export async function closeTicket(ticketId: string) {
-  const session = await auth() as any;
-  if (!session?.user?.id) throw new Error("Não autorizado");
+  try {
+    const { supabase, session, isIdAdmin } = await getAuth();
 
-  const isDiscordAdmin = ADMIN_IDS.includes(session.user.discordId);
-  const { data: dbUser } = await supabase.from('User').select('role').eq('id', session.user.id).single();
-  const isStaff = isDiscordAdmin || dbUser?.role === "STAFF" || dbUser?.role === "ADMIN";
+    const { data: ticket } = await supabase.from('Ticket').select('user_id').eq('id', ticketId).single();
+    if (!ticket) return;
 
-  const { data: ticket } = await supabase.from('Ticket').select('userId').eq('id', ticketId).single();
-  if (!ticket) return;
+    const { data: dbUser } = await supabase.from('User').select('role').eq('id', session.user.id).maybeSingle();
+    const isStaff = isIdAdmin || dbUser?.role === "STAFF" || dbUser?.role === "ADMIN";
 
-  if (!isStaff && ticket.userId !== session.user.id) return;
+    if (!isStaff && ticket.user_id !== session.user.id) return;
 
-  await supabase.from('Ticket').update({ status: "CLOSED" }).eq('id', ticketId);
+    await supabase.from('Ticket').update({ status: "CLOSED" }).eq('id', ticketId);
 
-  revalidatePath("/");
+    revalidatePath("/");
+  } catch (e: any) {
+    console.error("Close error:", e.message);
+  }
 }

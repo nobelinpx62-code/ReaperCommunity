@@ -1,88 +1,108 @@
 "use server"
 
-import { auth } from "@/auth"
-import { supabase } from "@/lib/supabase"
+import { createServerActionClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 import { revalidatePath } from "next/cache"
 
 const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
 
 async function checkAdmin() {
-  const session = await auth() as any;
-  const discordId = session?.user?.discordId;
-  const isAdmin = discordId && ADMIN_IDS.includes(discordId);
-  if (!isAdmin) throw new Error("Acesso Negado.");
-  return session;
+  const supabase = createServerActionClient({ cookies })
+  const { data: { session } } = await supabase.auth.getSession()
+  
+  if (!session) throw new Error("Não autenticado");
+  
+  const discordId = session.user.user_metadata?.provider_id || session.user.id
+  const isAdmin = ADMIN_IDS.includes(discordId)
+  
+  if (!isAdmin) throw new Error("Acesso Negado: Você não é Root Admin");
+  return { supabase, session, discordId };
 }
 
-// Wrapper para FormData (Pode ser usado direto no action do form)
 export async function createCategoryAction(formData: FormData) {
     try {
+        const { supabase } = await checkAdmin();
         const name = formData.get("name") as string;
         const icon = formData.get("icon") as string;
         if (!name) return;
-        await createCategory(name, icon);
-    } catch (e) {
-        console.error("Action error:", e);
-    }
-}
 
-export async function createCategory(name: string, iconUrl?: string) {
-  await checkAdmin();
-  const { data, error } = await supabase.from('Category').insert({ 
-    name: name.trim(), 
-    icon: iconUrl?.trim() || null 
-  }).select();
-  
-  if (error) {
-    console.error("Supabase Error:", error.message);
-    throw new Error(error.message);
-  }
-  
-  revalidatePath("/");
-  return data;
+        const { error } = await supabase.from('Category').insert({ 
+            name: name.trim(), 
+            icon: icon?.trim() || null 
+        });
+
+        if (error) throw error;
+        revalidatePath("/");
+    } catch (e: any) {
+        console.error("Action error:", e.message);
+    }
 }
 
 export async function deleteCategoryAction(id: string) {
-    await checkAdmin();
-    await supabase.from('Category').delete().eq('id', id);
-    revalidatePath("/");
-}
-
-// Wrapper para FormData
-export async function createChannelAction(formData: FormData) {
     try {
-        const name = formData.get("name") as string;
-        const categoryId = formData.get("categoryId") as string;
-        if (!name || !categoryId) return;
-        await createChannel(categoryId, name);
-    } catch (e) {
-        console.error("Action error:", e);
+        const { supabase } = await checkAdmin();
+        await supabase.from('Category').delete().eq('id', id);
+        revalidatePath("/");
+    } catch (e: any) {
+        console.error("Action error:", e.message);
     }
 }
 
-export async function createChannel(categoryId: string, name: string) {
-    await checkAdmin();
-    const { error } = await supabase.from('Channel').insert({ 
-      name: name.trim().toLowerCase().replace(/\s+/g, '-'), 
-      categoryId 
-    });
-    if (error) throw new Error(error.message);
-    revalidatePath("/");
+export async function createChannelAction(formData: FormData) {
+    try {
+        const { supabase } = await checkAdmin();
+        const name = formData.get("name") as string;
+        const categoryId = formData.get("categoryId") as string;
+        if (!name || !categoryId) return;
+
+        const { error } = await supabase.from('Channel').insert({ 
+            name: name.trim().toLowerCase().replace(/\s+/g, '-'), 
+            category_id: categoryId 
+        });
+
+        if (error) throw error;
+        revalidatePath("/");
+    } catch (e: any) {
+        console.error("Action error:", e.message);
+    }
 }
 
 export async function deleteChannelAction(id: string) {
-    await checkAdmin();
-    await supabase.from('Channel').delete().eq('id', id);
-    revalidatePath("/");
+    try {
+        const { supabase } = await checkAdmin();
+        await supabase.from('Channel').delete().eq('id', id);
+        revalidatePath("/");
+    } catch (e: any) {
+        console.error("Action error:", e.message);
+    }
 }
 
 export async function createPost(data: any) {
-    const session = await checkAdmin();
-    const { error } = await supabase.from('Post').insert({
-        ...data,
-        authorId: session.user.id
-    });
-    if (error) throw new Error(error.message);
-    revalidatePath(`/channel/${data.channelId}`);
-    revalidatePath("/"); // Atualiza home se houver preview
+    try {
+        const { supabase, session } = await checkAdmin();
+        
+        // Mapeia os campos para o novo banco (Snake Case)
+        const postData = {
+            channel_id: data.channelId,
+            author_id: session.user.id, // ID interno do Supabase
+            title: data.title,
+            content: data.content,
+            banner: data.banner,
+            video_url: data.video,
+            owner_name: data.ownerName,
+            external_link: data.externalLink,
+            file_url: data.fileUrl,
+            image_size: data.imageSize || 'normal',
+            is_spoiler: data.isSpoiler || false
+        };
+
+        const { error } = await supabase.from('Post').insert(postData);
+        if (error) throw error;
+
+        revalidatePath(`/channel/${data.channelId}`);
+        revalidatePath("/");
+    } catch (e: any) {
+        console.error("Action error:", e.message);
+        throw e;
+    }
 }
