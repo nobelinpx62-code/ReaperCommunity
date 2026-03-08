@@ -35,9 +35,10 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
   const isStaff = isRealAdmin || dbUser?.role === "STAFF" || dbUser?.role === "ADMIN";
   const activeStaffMode = isStaff && !isMemberView;
 
+  // Busca Tickets pelo Supabase
   const ticketsQuery = supabase
     .from('Ticket')
-    .select('*, user:User(*), messages:Message(*, user:User(*))')
+    .select('*, user:User(*), messages:TicketMessage(*, user:User(*))')
     .order('status', { ascending: false })
     .order('createdAt', { ascending: false });
 
@@ -45,12 +46,15 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
     ticketsQuery.eq('userId', user.id);
   }
 
-  const { data: tickets = [] } = await ticketsQuery;
+  const { data: ticketsData } = await ticketsQuery;
+  const tickets = ticketsData || [];
 
-  const { data: categories = [] } = await supabase
+  // Busca Categorias pelo Supabase
+  const { data: categoriesData } = await supabase
     .from('Category')
     .select('*, channels:Channel(*)')
     .order('createdAt', { ascending: true });
+  const categories = categoriesData || [];
 
   let allUsers = [];
   if (isAdmin) {
