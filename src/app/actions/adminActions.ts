@@ -14,20 +14,50 @@ async function checkAdmin() {
   return session;
 }
 
-export async function createCategory(name: string, iconUrl?: string) {
-  await checkAdmin();
-  const { error } = await supabase.from('Category').insert({ 
-    name: name.trim(), 
-    icon: iconUrl?.trim() || null 
-  });
-  if (error) throw new Error(error.message);
-  revalidatePath("/");
+// Wrapper para FormData (Pode ser usado direto no action do form)
+export async function createCategoryAction(formData: FormData) {
+    try {
+        const name = formData.get("name") as string;
+        const icon = formData.get("icon") as string;
+        if (!name) return;
+        await createCategory(name, icon);
+    } catch (e) {
+        console.error("Action error:", e);
+    }
 }
 
-export async function deleteCategory(id: string) {
+export async function createCategory(name: string, iconUrl?: string) {
+  await checkAdmin();
+  const { data, error } = await supabase.from('Category').insert({ 
+    name: name.trim(), 
+    icon: iconUrl?.trim() || null 
+  }).select();
+  
+  if (error) {
+    console.error("Supabase Error:", error.message);
+    throw new Error(error.message);
+  }
+  
+  revalidatePath("/");
+  return data;
+}
+
+export async function deleteCategoryAction(id: string) {
     await checkAdmin();
     await supabase.from('Category').delete().eq('id', id);
     revalidatePath("/");
+}
+
+// Wrapper para FormData
+export async function createChannelAction(formData: FormData) {
+    try {
+        const name = formData.get("name") as string;
+        const categoryId = formData.get("categoryId") as string;
+        if (!name || !categoryId) return;
+        await createChannel(categoryId, name);
+    } catch (e) {
+        console.error("Action error:", e);
+    }
 }
 
 export async function createChannel(categoryId: string, name: string) {
@@ -40,7 +70,7 @@ export async function createChannel(categoryId: string, name: string) {
     revalidatePath("/");
 }
 
-export async function deleteChannel(id: string) {
+export async function deleteChannelAction(id: string) {
     await checkAdmin();
     await supabase.from('Channel').delete().eq('id', id);
     revalidatePath("/");
@@ -54,4 +84,5 @@ export async function createPost(data: any) {
     });
     if (error) throw new Error(error.message);
     revalidatePath(`/channel/${data.channelId}`);
+    revalidatePath("/"); // Atualiza home se houver preview
 }

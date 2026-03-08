@@ -8,7 +8,9 @@ import RealtimeSync from "@/components/RealtimeSync"
 import TicketPanel from "@/components/TicketPanel"
 import AdminPanel from "@/components/AdminPanel"
 import { supabase } from "@/lib/supabase"
-import { createCategory, deleteCategory, createChannel, deleteChannel } from "@/app/actions/adminActions"
+import { createCategoryAction, deleteCategoryAction, createChannelAction, deleteChannelAction } from "@/app/actions/adminActions"
+
+export const dynamic = 'force-dynamic'; // EVITA CACHE AGGRESSIVO NA VERCEL
 
 const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
 
@@ -31,31 +33,21 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
   const isStaff = isRealAdmin || dbUser?.role === "STAFF" || dbUser?.role === "ADMIN";
   const activeStaffMode = isStaff && !isMemberView;
 
-  // Busca Categorias e Canais - Modo Robusto
+  // Busca Categorias e Canais - Modo Altamente Robusto
   const { data: categoriesData, error: catError } = await supabase
     .from('Category')
-    .select('*, Channel(*)')
+    .select('*, channels:Channel(*)') // Alias Explícito
     .order('createdAt', { ascending: true });
 
   if (catError) console.error("ERRO AO BUSCAR CATEGORIAS:", catError.message);
   
-  // Mapeia os canais (Supabase retorna o nome da tabela por padrão se não houver alias)
-  const categories = (categoriesData || []).map((cat: any) => ({
-      ...cat,
-      channels: cat.Channel || []
-  }));
+  const categories = categoriesData || [];
 
   // Busca Tickets
   const { data: ticketsData } = await supabase
     .from('Ticket')
-    .select('*, User(*), TicketMessage(*, User(*))')
+    .select('*, user:User(*), messages:TicketMessage(*, user:User(*))')
     .order('createdAt', { ascending: false });
-  
-  const tickets = (ticketsData || []).map((tk: any) => ({
-      ...tk,
-      user: tk.User,
-      messages: tk.TicketMessage || []
-  }));
 
   let allUsers = [];
   if (isAdmin) {
@@ -87,7 +79,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
          {catError && (
              <div className="glass-panel" style={{ padding: '16px', marginBottom: '24px', border: '1px solid var(--accent-red)', background: 'rgba(138, 31, 36, 0.1)', display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <AlertCircle color="var(--accent-red)" />
-                <p style={{ color: 'var(--text-primary)', margin: 0 }}>Erro na comunicação com o banco: {catError.message}. Recarregue a página.</p>
+                <p style={{ color: 'var(--text-primary)', margin: 0 }}>Erro no Supabase: {catError.message}. Tente rodar o SQL de permissões.</p>
              </div>
          )}
 
@@ -95,12 +87,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
          <TicketPanel user={{...user, role: dbUser?.role || "USER"}} tickets={ticketsData || []} isStaff={activeStaffMode} />
 
          {isAdmin && (
-          <form action={async (formData) => {
-            "use server";
-            const name = formData.get("name") as string;
-            const icon = formData.get("icon") as string;
-            if(name) await createCategory(name, icon);
-          }} className="glass-panel" style={{ padding: '16px', marginBottom: '24px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <form action={createCategoryAction} className="glass-panel" style={{ padding: '16px', marginBottom: '24px', display: 'flex', gap: '8px', alignItems: 'center' }}>
             <input type="text" name="name" placeholder="Nova Categoria..." className="input-field" required style={{ flex: 1 }} />
             <input type="text" name="icon" placeholder="URL Ícone (Opcional)" className="input-field" style={{ flex: 1 }} />
             <button type="submit" className="btn-primary" style={{ padding: '12px 24px' }}><Plus size={18} /> CRIAR</button>
@@ -116,14 +103,14 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                    {cat.name.toUpperCase()}
                  </h3>
                  {isAdmin && (
-                    <form action={async () => { "use server"; await deleteCategory(cat.id); }}>
+                    <form action={async () => { "use server"; await deleteCategoryAction(cat.id); }}>
                        <button type="submit" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Trash2 size={18}/></button>
                     </form>
                  )}
                </div>
 
                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginLeft: '12px' }}>
-                 {cat.channels.map((ch: any) => (
+                 {(cat.channels || []).map((ch: any) => (
                     <div key={ch.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <Link href={`/channel/${ch.id}${isMemberView ? '?view=member' : ''}`} style={{ textDecoration: 'none', flex: 1 }}>
                         <div className="channel-card">
@@ -132,7 +119,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                         </div>
                       </Link>
                       {isAdmin && (
-                         <form action={async () => { "use server"; await deleteChannel(ch.id); }} style={{ marginLeft: '12px' }}>
+                         <form action={async () => { "use server"; await deleteChannelAction(ch.id); }}>
                             <button type="submit" style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '8px' }}><Trash2 size={16}/></button>
                          </form>
                       )}
@@ -140,11 +127,8 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
                  ))}
 
                  {isAdmin && (
-                    <form action={async (formData) => {
-                      "use server";
-                      const name = formData.get("name") as string;
-                      if(name) await createChannel(cat.id, name);
-                    }} style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <form action={createChannelAction} style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                      <input type="hidden" name="categoryId" value={cat.id} />
                       <input type="text" name="name" placeholder="novo-canal" className="input-field" required style={{ flex: 1, padding: '10px' }} />
                       <button type="submit" className="btn-secondary" style={{ padding: '0 16px' }}><Plus size={16}/></button>
                     </form>
@@ -155,7 +139,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
           {(!categories || categories.length === 0) && !catError && (
              <div className="glass-panel" style={{ padding: '40px', textAlign: 'center' }}>
                 <p style={{ color: 'var(--text-muted)', marginBottom: '16px' }}>Nenhuma categoria disponível.</p>
-                {isAdmin && <p style={{ color: 'var(--accent-purple-light)' }}>Use o painel acima para criar sua primeira categoria!</p>}
+                {isAdmin && <p style={{ color: 'var(--accent-purple-light)' }}>O banco de dados está vazio! Use o painel de criação acima.</p>}
              </div>
           )}
         </div>
