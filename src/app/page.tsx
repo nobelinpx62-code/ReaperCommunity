@@ -9,6 +9,8 @@ import { createCategory, createChannel, deleteCategory, deleteChannel } from "@/
 import RealtimeSync from "@/components/RealtimeSync"
 import TicketPanel from "@/components/TicketPanel"
 import AdminPanel from "@/components/AdminPanel"
+import { supabase } from "@/lib/supabase"
+
 
 const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
 
@@ -26,8 +28,14 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
   if (!user.agreedTerms && !isRealAdmin) return <TermsGate />;
   if (!isAdmin && !user.verifiedToken && !isRealAdmin) return <TokenGate />;
 
-  const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+  const { data: dbUser } = await supabase
+    .from('User')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
   const isStaff = isRealAdmin || dbUser?.role === "STAFF" || dbUser?.role === "ADMIN";
+
   const activeStaffMode = isStaff && !isMemberView;
 
   const tickets = await prisma.ticket.findMany({
