@@ -1,6 +1,7 @@
 import NextAuth from "next-auth"
 import Discord from "next-auth/providers/discord"
 import { supabase } from "@/lib/supabase"
+import crypto from "crypto"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [

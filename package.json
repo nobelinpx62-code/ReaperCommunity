@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@auth/prisma-adapter": "^2.11.1",
+    "@prisma/client": "^7.4.2",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@supabase/ssr": "^0.9.0",
@@ -17,6 +19,7 @@
     "lucide-react": "^0.577.0",
     "next": "16.1.6",
     "next-auth": "^5.0.0-beta.30",
+    "prisma": "^7.4.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "three": "^0.183.2"
