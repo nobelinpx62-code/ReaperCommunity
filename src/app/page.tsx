@@ -67,7 +67,7 @@ export default async function Home(props: { searchParams: Promise<{ view?: strin
         <div className="glass-panel" style={{ padding: '32px', marginBottom: '24px', textAlign: 'center', position: 'relative' }}>
           <h2 className="brand-font text-gradient-purple" style={{ marginBottom: '12px', fontSize: '2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
             BEM VINDO, {user?.name?.toUpperCase() ?? "USUÁRIO"}
-            {isRealAdmin && <ShieldCheck color="#00ff00" size={28} title="Verified Admin Root" />}
+            {isRealAdmin && <span title="Verified Admin Root"><ShieldCheck color="#00ff00" size={28} /></span>}
           </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', marginBottom: isRealAdmin ? '24px' : '0' }}>
             Servidor root de Arquivos. Selecione um canal da comunidade abaixo para acessar seu conteúdo.

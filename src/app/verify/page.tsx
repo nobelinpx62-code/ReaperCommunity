@@ -16,8 +16,6 @@ export default function VerificationEngine() {
   const addLog = (msg: string) => setLogs(prev => [...prev, `[SEC-OPS] ${msg}`]);
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-
     const runScan = async () => {
       // INIT
       addLog("Inicializando Reaper SecOps v2.0...");
@@ -43,8 +41,6 @@ export default function VerificationEngine() {
     };
 
     runScan();
-
-    return () => clearTimeout(timeoutId);
   }, []);
 
   const handleCaptchaSuccess = () => {
