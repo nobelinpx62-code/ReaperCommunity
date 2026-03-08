@@ -6,11 +6,12 @@ import crypto from "crypto"
 const ADMIN_IDS = ["1144048134109003816", "1313535117792378891"];
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  debug: true, // Ativa logs detalhados na Vercel para sabermos o erro exato
   providers: [
     Discord({
         clientId: process.env.DISCORD_CLIENT_ID,
         clientSecret: process.env.DISCORD_CLIENT_SECRET,
-        checks: ["state"], // Desliga o PKCE que está quebrando nos seus links de preview
+        checks: ["state"], 
     }),
   ],
   session: { strategy: "jwt" },
@@ -18,58 +19,75 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
   callbacks: {
     async signIn({ user, account, profile }: any) {
-      if (!user?.email) return false;
+      try {
+        if (!user?.email) return false;
 
-      const discordId = account?.providerAccountId;
-      const isAdmin = discordId && ADMIN_IDS.includes(discordId);
+        const discordId = account?.providerAccountId;
+        const isAdmin = discordId && ADMIN_IDS.includes(discordId);
 
-      // Sincroniza o usuário direto no Supabase sem erro de Prisma
-      const { data: existingUser } = await supabase
-        .from('User')
-        .select('id')
-        .eq('email', user.email)
-        .single();
+        // Busca se o usuário já existe
+        const { data: existingUser, error: fetchError } = await supabase
+          .from('User')
+          .select('id, role, agreedTerms')
+          .eq('email', user.email)
+          .maybeSingle(); // maybeSingle é mais seguro que single()
 
-      if (!existingUser) {
-        await supabase.from('User').insert({
-          id: user.id || crypto.randomUUID(),
-          name: profile?.global_name || user.name,
-          email: user.email,
-          image: user.image,
-          role: isAdmin ? 'ADMIN' : 'USER',
-          agreedTerms: isAdmin ? true : false,
-          updatedAt: new Date().toISOString()
-        });
-      } else if (isAdmin) {
-        // Garante que o admin tenha as flags no banco caso tenha sido criado antes
-        await supabase.from('User')
-          .update({ role: 'ADMIN', agreedTerms: true })
-          .eq('id', existingUser.id);
+        if (fetchError) {
+          console.error("Erro ao buscar usuário no Supabase:", fetchError);
+        }
+
+        if (!existingUser) {
+          const newUserId = user.id || crypto.randomUUID();
+          const { error: insertError } = await supabase.from('User').insert({
+            id: newUserId,
+            name: profile?.global_name || profile?.username || user.name,
+            email: user.email,
+            image: user.image,
+            role: isAdmin ? 'ADMIN' : 'USER',
+            agreedTerms: isAdmin ? true : false,
+            updatedAt: new Date().toISOString()
+          });
+          
+          if (insertError) {
+            console.error("Erro ao inserir novo usuário:", insertError);
+          }
+          user.id = newUserId;
+        } else {
+          user.id = existingUser.id;
+          if (isAdmin && (!existingUser.agreedTerms || existingUser.role !== 'ADMIN')) {
+            await supabase.from('User')
+              .update({ role: 'ADMIN', agreedTerms: true })
+              .eq('id', existingUser.id);
+          }
+        }
+
+        // Sincroniza a conta do Discord
+        if (account && user.id) {
+           const { data: existingAccount } = await supabase
+              .from('Account')
+              .select('id')
+              .eq('providerAccountId', account.providerAccountId)
+              .maybeSingle();
+
+           if (!existingAccount) {
+              await supabase.from('Account').insert({
+                 id: crypto.randomUUID(),
+                 userId: user.id,
+                 type: account.type,
+                 provider: account.provider,
+                 providerAccountId: account.providerAccountId,
+                 access_token: account.access_token,
+                 token_type: account.token_type,
+                 scope: account.scope,
+                 updatedAt: new Date().toISOString()
+              });
+           }
+        }
+        return true;
+      } catch (err) {
+        console.error("Erro fatal no signIn callback:", err);
+        return true; // Deixa o login prosseguir mesmo se o sync falhar, para não travar o usuário
       }
-
-      // Sincroniza a conta do Discord
-      if (account && user.id) {
-         const { data: existingAccount } = await supabase
-            .from('Account')
-            .select('id')
-            .eq('providerAccountId', account.providerAccountId)
-            .single();
-
-         if (!existingAccount) {
-            await supabase.from('Account').insert({
-               id: crypto.randomUUID(),
-               userId: user.id,
-               type: account.type,
-               provider: account.provider,
-               providerAccountId: account.providerAccountId,
-               access_token: account.access_token,
-               token_type: account.token_type,
-               scope: account.scope,
-               updatedAt: new Date().toISOString()
-            });
-         }
-      }
-      return true;
     },
     async jwt({ token, user, account }: any) {
       if (user) {
@@ -79,15 +97,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
 
       if (token.id) {
-        const { data, error } = await supabase
-          .from('User')
-          .select('agreedTerms, role')
-          .eq('id', token.id)
-          .single();
-        
-        if (!error && data) {
-          token.agreedTerms = data.agreedTerms ?? false;
-          token.role = data.role ?? 'USER';
+        try {
+          const { data, error } = await supabase
+            .from('User')
+            .select('agreedTerms, role')
+            .eq('id', token.id)
+            .maybeSingle();
+          
+          if (!error && data) {
+            token.agreedTerms = data.agreedTerms ?? false;
+            token.role = data.role ?? 'USER';
+          }
+        } catch (e) {
+            console.error("Erro ao atualizar JWT do Supabase:", e);
         }
       }
 
