@@ -1,0 +1,335 @@
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@300;400;600&display=swap');
+
+:root {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #141414;
+  --bg-tertiary: rgba(20, 20, 20, 0.7);
+  
+  --accent-red: #8a1f24;
+  --accent-red-hover: #b0272e;
+  --accent-purple: #3f1a63;
+  --accent-purple-light: #5f2b8f;
+  
+  --text-primary: #f5f5f5;
+  --text-secondary: #a0a0a0;
+  --text-muted: #666666;
+
+  --border-color: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(20, 20, 20, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  
+  --glow-red: 0 0 20px rgba(138, 31, 36, 0.5);
+  --glow-purple: 0 0 20px rgba(63, 26, 99, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6, .brand-font {
+  font-family: 'Oswald', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--bg-secondary);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-red);
+}
+
+/* Glassmorphism Utilities */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 12px;
+}
+
+.glass-panel {
+  background: var(--bg-secondary);
+  background: linear-gradient(145deg, rgba(25, 25, 25, 0.8) 0%, rgba(10, 10, 10, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
+  border-radius: 16px;
+  position: relative;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 25px 50px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.15), 0 0 15px rgba(138, 31, 36, 0.15);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.avatar-glow {
+  border-radius: 50%;
+  padding: 2px;
+  background: linear-gradient(45deg, var(--accent-red), var(--accent-purple-light));
+  position: relative;
+  display: inline-block;
+}
+
+.avatar-glow img {
+  border: 3px solid var(--bg-secondary);
+  border-radius: 50%;
+  display: block;
+  object-fit: cover;
+}
+
+/* Buttons */
+.btn-primary {
+  background-color: var(--accent-red);
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  font-weight: 600;
+  box-shadow: var(--glow-red);
+}
+
+.btn-primary:hover {
+  background-color: var(--accent-red-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 0 25px rgba(138, 31, 36, 0.8);
+}
+
+.btn-secondary {
+  background-color: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-secondary:hover {
+  background-color: var(--bg-secondary);
+  border-color: var(--text-secondary);
+}
+
+.btn-discord {
+  background-color: #5865F2; /* Discord Brand Color */
+  color: white;
+  border: none;
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 15px rgba(88, 101, 242, 0.4);
+}
+
+.btn-discord:hover {
+  background-color: #4752C4;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(88, 101, 242, 0.6);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Grid Layout for App */
+.app-container {
+  display: grid;
+  grid-template-columns: 280px 1fr 300px;
+  gap: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+  position: relative;
+  z-index: 10;
+}
+
+@media (max-width: 1024px) {
+  .app-container {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+}
+
+.feed-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Base Inputs */
+input, textarea {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 12px;
+  padding: 16px;
+  font-family: 'Inter', sans-serif;
+  width: 100%;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  resize: none;
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent-red);
+  box-shadow: 0 0 0 4px rgba(138, 31, 36, 0.15), inset 0 2px 4px rgba(0,0,0,0.5);
+  background: rgba(10, 10, 10, 0.6);
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+/* Utility Classes */
+.text-gradient-red {
+  background: linear-gradient(to right, var(--accent-red), #ff4b4b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-purple {
+  background: linear-gradient(to right, var(--accent-purple-light), #9d50da);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.channel-card {
+  padding: 12px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-primary);
+  transition: background 0.2s ease;
+  cursor: pointer;
+}
+
+.channel-card:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.2s;
+  margin-bottom: 16px;
+}
+
+.back-link:hover {
+  color: var(--text-primary);
+}
+
+/* Custom Cursor: Red with black borders */
+body, html {
+  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"><path d="M5,3 L20,11.6 L12.7,14.2 L16.5,22.5 L13.5,24 L9.7,15.6 L4,20.2 Z" fill="%238a1f24" stroke="black" stroke-width="1.5"/></svg>'), auto;
+}
+
+button, a, input, select, textarea, .channel-card, .btn-primary, .btn-secondary, .btn-discord, .action-btn {
+  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"><path d="M5,3 L20,11.6 L12.7,14.2 L16.5,22.5 L13.5,24 L9.7,15.6 L4,20.2 Z" fill="%238a1f24" stroke="black" stroke-width="1.5"/></svg>'), pointer !important;
+}
+
+/* Mobile Responsiveness Improvements */
+@media (max-width: 768px) {
+  .app-container {
+    padding: 12px;
+  }
+  .glass-panel {
+    padding: 16px !important;
+  }
+  .brand-font {
+    font-size: 1.5rem !important;
+  }
+  h1.brand-font, h2.brand-font.text-gradient-purple {
+    font-size: 1.6rem !important;
+  }
+  .feed-container {
+    gap: 16px;
+  }
+  input, textarea, select {
+    font-size: 1rem !important;
+    padding: 12px !important;
+  }
+  .btn-primary, .btn-secondary, .btn-discord {
+    padding: 10px 16px !important;
+    font-size: 0.9rem !important;
+    width: 100% !important;
+    justify-content: center !important;
+  }
+  .action-btn span {
+    font-size: 0.85rem !important;
+  }
+  .avatar-glow img {
+    width: 36px !important;
+    height: 36px !important;
+  }
+  /* Fix Advanced Panel on CreatePost specifically for mobile */
+  input[type="file"] {
+    width: 100%;
+  }
+}
+
