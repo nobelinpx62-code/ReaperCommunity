@@ -1,3 +1,5 @@
+"use server"
+
 import { auth } from "@/auth"
 import { supabase } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
